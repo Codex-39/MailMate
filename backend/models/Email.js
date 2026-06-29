@@ -32,7 +32,7 @@ const EmailSchema = new mongoose.Schema({
     deadline: String,
     skills: [String],
     actionItems: [String],
-    links: [String],
+    importantLinks: [String],
     generatedAt: Date
   }
 });

@@ -39,7 +39,7 @@ const AIIntelligencePanel = ({ insights, loading, error, onRegenerate }) => {
     deadline = 'N/A',
     skills = [],
     actionItems = [],
-    links = []
+    importantLinks = []
   } = insights;
 
   return (
@@ -173,11 +173,11 @@ const AIIntelligencePanel = ({ insights, loading, error, onRegenerate }) => {
       )}
 
       {/* Links List */}
-      {links && links.length > 0 && (
+      {importantLinks && importantLinks.length > 0 && (
         <div className="pt-3 border-t border-white/5">
           <span className="text-[9px] font-bold text-white/35 uppercase tracking-widest block mb-2 font-mono">Important Links</span>
           <div className="flex flex-wrap gap-2">
-            {links.map((link, idx) => {
+            {importantLinks.map((link, idx) => {
               // Extract hostname for cleaner presentation
               let label = 'Visit Resource';
               try {

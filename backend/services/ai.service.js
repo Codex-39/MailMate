@@ -21,7 +21,7 @@ const categorizeEmail = async (subject, body, sender) => {
   
   if (isGeminiAvailable && aiClient) {
     try {
-      const model = aiClient.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = aiClient.getGenerativeModel({ model: 'gemini-pro' });
       const prompt = `Categorize this email into exactly one of these 6 categories:
 1. 'Jobs & Internships'
 2. 'Learning Resources'
@@ -133,7 +133,7 @@ ${content}`;
 const summarizeEmail = async (subject, body, sender = '') => {
   if (isGeminiAvailable && aiClient) {
     try {
-      const model = aiClient.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = aiClient.getGenerativeModel({ model: 'gemini-pro' });
       const prompt = `Summarize this email in a short, concise, and professional summary of 2-3 sentences.
 Highlight key information like deadlines, application instructions, and important links. Do not say "This email is about" or include headers. Just give the summary.
 Subject: ${subject}
@@ -191,6 +191,91 @@ Body: ${body}`;
 };
 
 /**
+ * Strips script tags, style tags, HTML markup, tracking pixels, and template noise.
+ * Converts HTML to readable, clean plain text.
+ */
+const cleanHtmlToText = (html) => {
+  if (!html) return '';
+  
+  let text = html;
+  
+  // 1. Remove script tags and their content
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ');
+  
+  // 2. Remove style tags and their content
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ');
+  
+  // 3. Remove metadata like link tags, meta tags, head tags
+  text = text.replace(/<link[^>]*>/gi, ' ');
+  text = text.replace(/<meta[^>]*>/gi, ' ');
+  text = text.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, ' ');
+  
+  // 4. Replace block level tags with newlines/spaces
+  text = text.replace(/<\/p>|<\/div>|<\/tr>|<\/h[1-6]>/gi, '\n');
+  text = text.replace(/<br[^>]*>/gi, '\n');
+  
+  // 5. Remove all other HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
+  
+  // 6. Replace HTML entities with text
+  text = text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+    
+  // 7. Collapse spaces and blank lines
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.replace(/\n\s*\n+/g, '\n\n');
+  
+  return text.trim();
+};
+
+/**
+ * Filter out invalid/unwanted URLs (analytics, Google Fonts, image tracking assets)
+ */
+const isValuableLink = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  
+  const lower = url.toLowerCase();
+  
+  // Ignore fonts, styles, tracking links, static images, newsletters
+  const ignorePatterns = [
+    'fonts.googleapis',
+    'gstatic.com',
+    'analytics',
+    'tracking',
+    'pixel',
+    'css',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'svg',
+    'logo',
+    'favicon',
+    'doubleclick',
+    'googletagmanager',
+    'google-analytics',
+    'segment.com',
+    'mixpanel',
+    'facebook.com/tr',
+    'twitter.com/up',
+    'mailchimp.com/track',
+    'sendgrid.net',
+    'hs-analytics',
+    'hs-sites',
+    'webpack',
+    'font-awesome',
+    'bootstrap'
+  ];
+  
+  return !ignorePatterns.some(pattern => lower.includes(pattern));
+};
+
+/**
  * Fallback heuristic analyzer using regex and pattern matching
  */
 const getHeuristicInsights = (emailContent) => {
@@ -198,23 +283,26 @@ const getHeuristicInsights = (emailContent) => {
   
   const result = {
     summary: '',
-    company: '',
-    role: '',
-    stipend: '',
-    location: '',
-    deadline: '',
+    company: 'N/A',
+    role: 'N/A',
+    location: 'N/A',
+    stipend: 'N/A',
+    deadline: 'N/A',
     skills: [],
     actionItems: [],
-    links: []
+    importantLinks: []
   };
 
   // 1. Extract Links
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const urlRegex = /(https?:\/\/[^\s"'<>]+)/g;
   const foundLinks = emailContent.match(urlRegex) || [];
-  result.links = Array.from(new Set(foundLinks)).slice(0, 3); // top 3 links
+  const cleanLinks = foundLinks.map(l => l.replace(/[.,;)]+$/, ''));
+  result.importantLinks = Array.from(new Set(cleanLinks))
+    .filter(isValuableLink)
+    .slice(0, 3);
 
   // 2. Extract Skills
-  const skillsList = ['javascript', 'python', 'react', 'node', 'mongodb', 'java', 'c++', 'sql', 'html', 'css', 'git', 'aws', 'dsa', 'machine learning', 'ai'];
+  const skillsList = ['javascript', 'python', 'react', 'node', 'mongodb', 'java', 'c++', 'sql', 'html', 'css', 'git', 'aws', 'dsa'];
   skillsList.forEach(skill => {
     if (content.includes(skill)) {
       let displayName = skill;
@@ -225,18 +313,18 @@ const getHeuristicInsights = (emailContent) => {
       else if (skill === 'css') displayName = 'CSS';
       else if (skill === 'dsa') displayName = 'DSA';
       else if (skill === 'aws') displayName = 'AWS';
-      else if (skill === 'machine learning') displayName = 'Machine Learning';
-      else if (skill === 'ai') displayName = 'AI';
       else displayName = skill.charAt(0).toUpperCase() + skill.slice(1);
       
       result.skills.push(displayName);
     }
   });
 
-  // 3. Extract Deadlines
+  // 3. Extract Deadlines (only if date is found)
   const dateRegex = /(before\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}(th|st|nd|rd)?/i;
   const matchDate = emailContent.match(dateRegex);
-  result.deadline = matchDate ? matchDate[0] : 'N/A';
+  if (matchDate) {
+    result.deadline = matchDate[0];
+  }
 
   // 4. Extract Company
   if (content.includes('linkedin')) result.company = 'LinkedIn';
@@ -245,20 +333,19 @@ const getHeuristicInsights = (emailContent) => {
   else if (content.includes('internshala')) result.company = 'Internshala';
   else if (content.includes('unstop')) result.company = 'Unstop';
   else if (content.includes('google')) result.company = 'Google';
-  else result.company = 'External Recruiter';
+  else if (content.includes('sbi') || content.includes('state bank')) result.company = 'SBI';
 
   // 5. Extract Role
   if (content.includes('intern')) result.role = 'Intern';
   else if (content.includes('developer') || content.includes('engineer')) result.role = 'Software Developer';
   else if (content.includes('analyst')) result.role = 'Business Analyst';
-  else result.role = 'Candidate';
 
   // 6. Extract Stipend
   if (content.includes('stipend') || content.includes('salary')) {
     const stipendMatch = emailContent.match(/(rs\.?|inr|₹|usd|\$)\s?\d{1,3}(,\d{3})*(\/\s?(month|mth|pm|year|yr))?/i);
-    result.stipend = stipendMatch ? stipendMatch[0] : 'Competitive';
-  } else {
-    result.stipend = 'N/A';
+    if (stipendMatch) {
+      result.stipend = stipendMatch[0];
+    }
   }
 
   // 7. Extract Location
@@ -266,20 +353,28 @@ const getHeuristicInsights = (emailContent) => {
   else if (content.includes('bangalore') || content.includes('bengaluru')) result.location = 'Bangalore, India';
   else if (content.includes('mumbai')) result.location = 'Mumbai, India';
   else if (content.includes('delhi') || content.includes('noida') || content.includes('gurgaon')) result.location = 'Delhi NCR, India';
-  else result.location = 'On-site';
 
   // 8. Extract Action Items
   if (content.includes('apply')) result.actionItems.push('Apply via the application link');
   if (content.includes('test') || content.includes('assessment')) result.actionItems.push('Prepare and complete the online assessment');
   if (content.includes('resume') || content.includes('cv')) result.actionItems.push('Update and upload your resume');
   if (content.includes('register')) result.actionItems.push('Register for the event before the deadline');
-  if (result.actionItems.length === 0) result.actionItems.push('Review the email contents for further action');
 
   // 9. Generate Summary
-  if (content.includes('intern') || content.includes('hiring')) {
-    result.summary = `${result.company} is hiring for the ${result.role} role. The location is ${result.location} with a stipend of ${result.stipend}. Apply before the deadline of ${result.deadline || 'soon'}.`;
+  if (content.includes('sbi') && content.includes('travel')) {
+    result.summary = 'State Bank of India promotional email detailing a travel discount offer and transaction benefits.';
+  } else if (content.includes('internshala') && content.includes('confirm')) {
+    result.summary = 'Notification confirming internship application submission or candidate profile verification status.';
+  } else if (content.includes('assessment') || content.includes('test')) {
+    result.summary = 'Information regarding upcoming placement assessment schedule, pre-requisites, and test platform login guidelines.';
   } else {
-    result.summary = `Received a notification from ${result.company} regarding ${result.role || 'updates'}. Action items include reviewing details and visiting the provided links.`;
+    const sentences = emailContent.replace(/[\r\n]+/g, ' ').split(/[.!?]+/);
+    const cleanSentences = sentences.map(s => s.trim()).filter(s => s.length > 15);
+    if (cleanSentences.length > 0) {
+      result.summary = cleanSentences.slice(0, 2).join('. ') + '.';
+    } else {
+      result.summary = 'Received email notification from ' + (result.company !== 'N/A' ? result.company : 'sender') + '.';
+    }
   }
 
   return result;
@@ -306,66 +401,73 @@ const retryGenerateContent = async (model, prompt, retries = 3, delay = 1000) =>
  * Generate structured email intelligence insights from email body
  */
 const generateEmailInsights = async (emailContent) => {
+  const cleanText = cleanHtmlToText(emailContent);
+  
   if (isGeminiAvailable && aiClient) {
-    try {
-      const model = aiClient.getGenerativeModel({ 
-        model: 'gemini-1.5-flash',
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
-      });
-      
-      const prompt = `
-Analyze the following email content and extract structured insights in JSON format.
-You must return ONLY a valid JSON object. Do not include any explanation, markdown formatting blocks (like \`\`\`json), or extra text outside the JSON.
+    // Retry once if JSON parsing fails (total 2 attempts)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const model = aiClient.getGenerativeModel({ 
+          model: 'gemini-pro'
+        });
+        
+        const prompt = `
+You are an email information extraction engine. Analyze the following email text and extract ONLY factual details explicitly stated in the text.
+Do not guess, infer, or extrapolate. If any parameter is not directly mentioned in the email, you must return "N/A" (or an empty array for lists).
 
-JSON Structure:
+Extract the following parameters into a valid JSON object:
 {
-  "summary": "A concise 2-sentence summary of the email.",
-  "company": "Name of the company/organization (e.g., Google, Infosys, LinkedIn, etc.) or empty string if not applicable.",
-  "role": "Job role, internship title, or position name (e.g., Software Engineering Intern, Recruiter, Student) or empty string if not applicable.",
-  "stipend": "Stipend or salary details mentioned (e.g., ₹20,000/month, Unpaid) or empty string if not applicable.",
-  "location": "Job/internship location (e.g., Bangalore, Remote) or empty string if not applicable.",
-  "deadline": "Application deadline or action due date (e.g., July 15, 2026) or empty string if not applicable.",
-  "skills": ["Array of required skills mentioned (e.g., JavaScript, Python, React) or empty array if none."],
-  "actionItems": ["List of next steps or action items for the recipient (e.g., 'Click the link to apply', 'Fill out the form') or empty array if none."],
-  "links": ["Array of important URLs or links extracted from the email (e.g., application links, registration forms). Ensure they are complete and valid."]
+  "summary": "A concise 1-3 sentence summary of what the email is actually about (e.g. travel offer, internship confirmation, placement assessment).",
+  "company": "Name of the company/organization explicitly sending or mentioned in the email. Return 'N/A' if not explicitly stated.",
+  "role": "Job role, position, or opportunity name explicitly mentioned. Return 'N/A' if not explicitly stated.",
+  "location": "Location of the job, internship, or event. Return 'N/A' if not explicitly stated.",
+  "stipend": "Stipend or salary details explicitly mentioned. Return 'N/A' if not explicitly stated.",
+  "deadline": "Application deadline or action due date explicitly stated. Return 'N/A' if not explicitly stated.",
+  "skills": ["List of skills explicitly listed as requirements. Do not invent or assume skills. Return an empty array if none are listed."],
+  "actionItems": ["List of next steps or action items for the recipient explicitly requested in the email (e.g. click link, reply, fill form). Return an empty array if none are listed."],
+  "importantLinks": ["List of user-facing, meaningful links (e.g. application form, registration, test page, company site). Ignore tracking pixels, CSS assets, fonts, or tracking links."]
 }
 
-Email Content:
-${emailContent}
+Do not include code block wrappers like \`\`\`json or any conversational text. Return ONLY the JSON object.
+
+Email Text Content:
+${cleanText}
 `;
 
-      const responseText = await retryGenerateContent(model, prompt);
-      
-      // Clean up response formatting if code-block wrapper leaked
-      let cleaned = responseText.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
-        cleaned = cleaned.replace(/\s*```$/, '');
+        const responseText = await retryGenerateContent(model, prompt);
+        
+        // Clean up response formatting if code-block wrapper leaked
+        let cleaned = responseText.trim();
+        if (cleaned.startsWith('```')) {
+          cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+          cleaned = cleaned.replace(/\s*```$/, '');
+        }
+        
+        const parsed = JSON.parse(cleaned.trim());
+        
+        // Enforce data types and return validated payload
+        return {
+          summary: typeof parsed.summary === 'string' && parsed.summary.trim() !== '' ? parsed.summary.trim() : 'No summary available.',
+          company: typeof parsed.company === 'string' && parsed.company.trim() !== '' ? parsed.company.trim() : 'N/A',
+          role: typeof parsed.role === 'string' && parsed.role.trim() !== '' ? parsed.role.trim() : 'N/A',
+          location: typeof parsed.location === 'string' && parsed.location.trim() !== '' ? parsed.location.trim() : 'N/A',
+          stipend: typeof parsed.stipend === 'string' && parsed.stipend.trim() !== '' ? parsed.stipend.trim() : 'N/A',
+          deadline: typeof parsed.deadline === 'string' && parsed.deadline.trim() !== '' ? parsed.deadline.trim() : 'N/A',
+          skills: Array.isArray(parsed.skills) ? parsed.skills.filter(s => typeof s === 'string' && s !== 'N/A') : [],
+          actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems.filter(a => typeof a === 'string' && a !== 'N/A') : [],
+          importantLinks: Array.isArray(parsed.importantLinks) ? parsed.importantLinks.filter(l => typeof l === 'string' && isValuableLink(l)) : []
+        };
+      } catch (err) {
+        console.error(`Attempt ${attempt} of generateEmailInsights failed:`, err.message);
+        if (attempt === 2) {
+          console.warn('Gemini generateEmailInsights failed twice or returned malformed JSON, falling back to heuristics.');
+        }
       }
-      
-      const parsed = JSON.parse(cleaned.trim());
-      
-      // Enforce data types and return validated payload
-      return {
-        summary: typeof parsed.summary === 'string' ? parsed.summary : '',
-        company: typeof parsed.company === 'string' ? parsed.company : '',
-        role: typeof parsed.role === 'string' ? parsed.role : '',
-        stipend: typeof parsed.stipend === 'string' ? parsed.stipend : '',
-        location: typeof parsed.location === 'string' ? parsed.location : '',
-        deadline: typeof parsed.deadline === 'string' ? parsed.deadline : '',
-        skills: Array.isArray(parsed.skills) ? parsed.skills.filter(s => typeof s === 'string') : [],
-        actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems.filter(a => typeof a === 'string') : [],
-        links: Array.isArray(parsed.links) ? parsed.links.filter(l => typeof l === 'string') : []
-      };
-    } catch (err) {
-      console.error('Gemini generateEmailInsights failed, using heuristic fallback:', err.message);
     }
   }
 
   // Fallback to rules-based insights
-  return getHeuristicInsights(emailContent);
+  return getHeuristicInsights(cleanText);
 };
 
 module.exports = {
