@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEmail } from '../context/EmailContext';
-import AISummaryCard from '../components/AISummaryCard';
+import AIIntelligencePanel from '../components/AIIntelligencePanel';
+import api from '../utils/api';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Mail, Star, MailOpen, FileText, Download, RefreshCw, Paperclip } from 'lucide-react';
 
@@ -18,10 +19,31 @@ const EmailDetail = () => {
   } = useEmail();
 
   const [downloadingFile, setDownloadingFile] = useState(null);
+  const [insights, setInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState(false);
+
+  const fetchInsights = async (forceRegen = false) => {
+    if (!id) return;
+    setInsightsLoading(true);
+    setInsightsError(false);
+    try {
+      const res = await api.get(`/emails/${id}/insights`, {
+        params: forceRegen ? { force: 'true' } : {}
+      });
+      setInsights(res.data);
+    } catch (err) {
+      console.error('Error fetching email insights:', err);
+      setInsightsError(true);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (id) {
       fetchEmailDetails(id);
+      fetchInsights(false);
     }
   }, [id]);
 
@@ -233,11 +255,12 @@ const EmailDetail = () => {
           </div>
         </div>
 
-        {/* MailMate AI Summary */}
-        <AISummaryCard 
-          email={selectedEmail} 
-          onRegenerate={generateAISummary}
-          loading={detailsLoading}
+        {/* MailMate AI Intelligence Panel */}
+        <AIIntelligencePanel 
+          insights={insights} 
+          loading={insightsLoading}
+          error={insightsError}
+          onRegenerate={() => fetchInsights(true)}
         />
 
         {/* Email content block wrapped in frosted glass container */}

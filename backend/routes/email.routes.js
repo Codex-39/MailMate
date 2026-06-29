@@ -192,4 +192,41 @@ router.post('/:id/summarize', async (req, res) => {
   }
 });
 
+// @route   GET api/emails/:id/insights
+// @desc    Get AI-generated email insights (summary, company, role, stipend, etc.)
+router.get('/:id/insights', async (req, res) => {
+  try {
+    const email = await Email.findById(req.params.id);
+    if (!email) {
+      return res.status(404).json({ message: 'Email not found' });
+    }
+
+    // Security check: email must belong to current user
+    if (email.userId.toString() !== req.user.userId.toString()) {
+      return res.status(403).json({ message: 'Unauthorized access to this email' });
+    }
+
+    // If cached insights exist and we're not forcing regeneration, return them
+    if (email.aiInsights && email.aiInsights.summary && req.query.force !== 'true') {
+      return res.json(email.aiInsights);
+    }
+
+    // Otherwise, generate new insights using our AI service
+    const { generateEmailInsights } = require('../services/ai.service');
+    const insights = await generateEmailInsights(email.body || email.snippet || email.subject);
+    
+    // Save generated insights into MongoDB cache
+    email.aiInsights = {
+      ...insights,
+      generatedAt: new Date()
+    };
+    await email.save();
+
+    res.json(email.aiInsights);
+  } catch (err) {
+    console.error('Email insights route error:', err);
+    res.status(500).json({ message: 'Error generating AI insights', error: err.message });
+  }
+});
+
 module.exports = router;

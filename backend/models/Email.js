@@ -22,7 +22,19 @@ const EmailSchema = new mongoose.Schema({
     mimeType: String,
     attachmentId: String,
     size: Number
-  }]
+  }],
+  aiInsights: {
+    summary: String,
+    company: String,
+    role: String,
+    stipend: String,
+    location: String,
+    deadline: String,
+    skills: [String],
+    actionItems: [String],
+    links: [String],
+    generatedAt: Date
+  }
 });
 
 module.exports = mongoose.model('Email', EmailSchema);
