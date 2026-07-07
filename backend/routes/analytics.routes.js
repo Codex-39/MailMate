@@ -201,4 +201,21 @@ router.get('/charts', async (req, res) => {
   }
 });
 
+// @route   GET api/analytics/daily-digest
+// @desc    Get daily AI-generated digest and dashboard aggregates
+router.get('/daily-digest', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const force = req.query.force === 'true';
+    
+    const { getDailyDigest } = require('../services/analytics.service');
+    const digest = await getDailyDigest(userId, force);
+    
+    res.json(digest);
+  } catch (err) {
+    console.error('Daily digest route error:', err);
+    res.status(500).json({ message: 'Error compiling daily digest summary', error: err.message });
+  }
+});
+
 module.exports = router;

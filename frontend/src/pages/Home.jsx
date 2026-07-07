@@ -4,6 +4,9 @@ import { useEmail } from '../context/EmailContext';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ChevronRight, AlertCircle, RefreshCw, Sparkles, Filter } from 'lucide-react';
+import DailyDigestModal from '../components/DailyDigestModal';
+import DashboardStats from '../components/DashboardStats';
+import api from '../utils/api';
 
 const Home = () => {
   const { 
@@ -20,6 +23,38 @@ const Home = () => {
   const searchInputRef = useRef(null);
 
   const [activeSubFilter, setActiveSubFilter] = useState('All');
+
+  // Daily AI Digest State and Fetch Logic
+  const [digest, setDigest] = useState(null);
+  const [digestLoading, setDigestLoading] = useState(true);
+  const [digestError, setDigestError] = useState(false);
+  const [refreshingDigest, setRefreshingDigest] = useState(false);
+  const [isDigestModalOpen, setIsDigestModalOpen] = useState(false);
+
+  const fetchDailyDigest = async (force = false) => {
+    if (force) setRefreshingDigest(true);
+    else setDigestLoading(true);
+    setDigestError(false);
+
+    try {
+      const res = await api.get('/analytics/daily-digest', {
+        params: force ? { force: 'true' } : {}
+      });
+      setDigest(res.data);
+    } catch (err) {
+      console.error('Error loading daily digest:', err);
+      setDigestError(true);
+    } finally {
+      setDigestLoading(false);
+      setRefreshingDigest(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchDailyDigest();
+    }
+  }, [user]);
 
   // Reset category sub-filter when active category changes
   useEffect(() => {
@@ -210,7 +245,7 @@ const Home = () => {
       </div>
 
       {/* Prominent Search bar */}
-      <div className="relative w-full mb-5 group">
+      <div className="relative w-full mb-8 group">
         <div className="relative flex items-center">
           <div className="absolute left-0 pl-4 flex items-center pointer-events-none">
             <Search className="h-4.5 w-4.5 text-purple-400/80 group-focus-within:text-purple-300 transition-colors" />
@@ -256,6 +291,25 @@ const Home = () => {
           </div>
         </div>
       )}
+
+      {/* Dashboard Statistics Grid */}
+      <div className="mb-6">
+        <DashboardStats 
+          digest={digest}
+          digestLoading={digestLoading}
+          onViewDigest={() => setIsDigestModalOpen(true)}
+        />
+      </div>
+
+      {/* Daily Digest Modal */}
+      <DailyDigestModal 
+        isOpen={isDigestModalOpen}
+        onClose={() => setIsDigestModalOpen(false)}
+        digest={digest}
+        refreshing={refreshingDigest}
+        onRefresh={() => fetchDailyDigest(true)}
+        error={digestError}
+      />
 
       {/* Senders Cards Section */}
       <div className="space-y-4 flex-1">

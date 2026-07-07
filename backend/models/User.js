@@ -10,6 +10,18 @@ const UserSchema = new mongoose.Schema({
   tokenExpiry: { type: Date },
   gmailHistoryId: { type: String },
   lastSyncedAt: { type: Date },
+  dailyDigestCache: {
+    totalEmails: { type: Number },
+    unreadEmails: { type: Number },
+    internships: { type: Number },
+    jobs: { type: Number },
+    college: { type: Number },
+    finance: { type: Number },
+    personal: { type: Number },
+    importantActions: [{ type: String }],
+    aiDigest: { type: String },
+    cachedAt: { type: Date }
+  },
   createdAt: { type: Date, default: Date.now }
 });
 
